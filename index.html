@@ -2339,10 +2339,17 @@ function stopChatListener() {
 }
 
 async function pushChat(text, sender, type='normal') {
-  await CHAT_REF.push().set({
-    id: Date.now(), sender, text, type,
-    time: new Date().toLocaleTimeString('he-IL',{hour:'2-digit',minute:'2-digit'})
-  });
+  try {
+    await CHAT_REF.push().set({
+      id: Date.now(),
+      sender: sender || 'אנונימי',
+      text, type,
+      time: new Date().toLocaleTimeString('he-IL',{hour:'2-digit',minute:'2-digit'})
+    });
+  } catch(e) {
+    console.error('Chat write failed:', e);
+    alert('שגיאה בשליחת הודעה: ' + e.message);
+  }
 }
 
 function renderChatMsgs(elId, msgs, me) {
