@@ -2323,19 +2323,25 @@ async function updateStat(username, type) {
    GLOBAL CHAT (dashboard)
 ════════════════════════════════════════════════════════ */
 let _dashChatListener = null;
+let _dashChatRef = null;
 
 function initDashChat() {
   stopChatListener();
   const me = APP.me;
-  _dashChatListener = CHAT_REF.limitToLast(60).on('value', snap => {
+  _dashChatRef = CHAT_REF.limitToLast(80);
+  _dashChatListener = _dashChatRef.on('value', snap => {
     const msgs = [];
     snap.forEach(c => msgs.push(c.val()));
-    renderChatMsgs('dashChatMessages', msgs, me);
+    if (msgs.length > 0) renderChatMsgs('dashChatMessages', msgs, me);
   });
 }
 
 function stopChatListener() {
-  if (_dashChatListener) { CHAT_REF.off('value', _dashChatListener); _dashChatListener=null; }
+  if (_dashChatRef && _dashChatListener) {
+    _dashChatRef.off('value', _dashChatListener);
+    _dashChatListener = null;
+    _dashChatRef = null;
+  }
 }
 
 async function pushChat(text, sender, type='normal') {
