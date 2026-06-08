@@ -2322,26 +2322,40 @@ async function updateStat(username, type) {
 /* ════════════════════════════════════════════════════════
    GLOBAL CHAT (dashboard)
 ════════════════════════════════════════════════════════ */
-let _dashChatListener = null;
-let _dashChatRef = null;
+/* ════════════════════════════════════════════════════════
+   CHAT — מערכת אחודה לדשבורד ולמשחק
+════════════════════════════════════════════════════════ */
+let _chatRef = null;
+let _chatCb  = null;
 
-function initDashChat() {
-  stopChatListener();
+function _startChat() {
+  // עצור listener קיים
+  if (_chatRef && _chatCb) { _chatRef.off('value', _chatCb); }
   const me = APP.me;
-  _dashChatRef = CHAT_REF.limitToLast(80);
-  _dashChatListener = _dashChatRef.on('value', snap => {
+  _chatRef = CHAT_REF.limitToLast(80);
+  _chatCb  = _chatRef.on('value', snap => {
     const msgs = [];
     snap.forEach(c => msgs.push(c.val()));
-    if (msgs.length > 0) renderChatMsgs('dashChatMessages', msgs, me);
+    if (!msgs.length) return;
+    // עדכן את שני פאנלי הצ'אט (דשבורד + משחק)
+    ['dashChatMessages','gameChatMessages'].forEach(id => {
+      const el = document.getElementById(id);
+      if (el) {
+        el.innerHTML = msgs.map(m => buildBubble(m, me)).join('');
+        el.scrollTop = el.scrollHeight;
+      }
+    });
   });
 }
 
-function stopChatListener() {
-  if (_dashChatRef && _dashChatListener) {
-    _dashChatRef.off('value', _dashChatListener);
-    _dashChatListener = null;
-    _dashChatRef = null;
-  }
+function stopChatListener()    { if (_chatRef && _chatCb) { _chatRef.off('value', _chatCb); _chatRef=null; _chatCb=null; } }
+function stopGameChatListener(){ /* מטופל ע"י stopChatListener */ }
+
+function initDashChat()        { _startChat(); }
+function initGameChat(players) {
+  _startChat();
+  const el = document.getElementById('gameChatOnline');
+  if (el) el.textContent = players || '2 שחקנים';
 }
 
 async function pushChat(text, sender, type='normal') {
@@ -2353,26 +2367,15 @@ async function pushChat(text, sender, type='normal') {
       time: new Date().toLocaleTimeString('he-IL',{hour:'2-digit',minute:'2-digit'})
     });
   } catch(e) {
-    console.error('Chat write failed:', e);
-    alert('שגיאה בשליחת הודעה: ' + e.message);
+    console.error('Chat error:', e);
+    alert('שגיאת צ\'אט: ' + e.message);
   }
-}
-
-function renderChatMsgs(elId, msgs, me) {
-  const el = document.getElementById(elId);
-  if (!el) return;
-  if (!msgs.length) {
-    el.innerHTML='<div class="msg-bubble system">אין הודעות עדיין — שלח ראשון! 👋</div>';
-  } else {
-    el.innerHTML = msgs.map(m => buildBubble(m, me)).join('');
-  }
-  el.scrollTop = el.scrollHeight;
 }
 
 function buildBubble(msg, me) {
   if (msg.type==='system') return `<div class="msg-bubble system">${msg.text}</div>`;
-  const mine   = msg.sender===me;
-  const sender = mine ? '' : `<div class="msg-sender">${msg.sender}</div>`;
+  const mine   = msg.sender && msg.sender === me;
+  const sender = mine ? '' : `<div class="msg-sender">${msg.sender||''}</div>`;
   return `<div class="msg-bubble ${mine?'me':'them'}">${sender}<div>${msg.text}</div><div class="msg-time">${msg.time||''}</div></div>`;
 }
 
@@ -2384,27 +2387,6 @@ async function sendDashChat() {
   await pushChat(txt, APP.me);
 }
 
-async function sendDashEmoji(e) { await pushChat(e, APP.me, 'emoji'); }
-
-/* ════════════════════════════════════════════════════════
-   GAME CHAT (in-game)
-════════════════════════════════════════════════════════ */
-let _gameChatListener = null;
-
-function initGameChat(players) {
-  if (_gameChatListener) CHAT_REF.off('value', _gameChatListener);
-  const me = APP.me;
-  _gameChatListener = CHAT_REF.limitToLast(60).on('value', snap => {
-    const msgs = []; snap.forEach(c=>msgs.push(c.val()));
-    renderChatMsgs('gameChatMessages', msgs, me);
-  });
-  document.getElementById('gameChatOnline').textContent = players || '2 שחקנים';
-}
-
-function stopGameChatListener() {
-  if (_gameChatListener) { CHAT_REF.off('value', _gameChatListener); _gameChatListener=null; }
-}
-
 async function sendGameChat() {
   const inp = document.getElementById('gameChatInput');
   const txt = inp.value.trim();
@@ -2413,6 +2395,7 @@ async function sendGameChat() {
   await pushChat(txt, APP.me);
 }
 
+async function sendDashEmoji(e) { await pushChat(e, APP.me, 'emoji'); }
 async function sendGameEmoji(e) { await pushChat(e, APP.me, 'emoji'); }
 
 function toggleGameChat() {
