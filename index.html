@@ -1549,6 +1549,11 @@ body {
         <span class="nav-icon">🏆</span> לוח תוצאות
       </div>
 
+      <!-- Admin only -->
+      <div class="nav-item" id="adminNavItem" style="display:none;color:#f59e0b" onclick="openAdminPanel()">
+        <span class="nav-icon">🛡️</span> ניהול משתמשים
+      </div>
+
       <div class="sidebar-section-label" style="margin-top:8px">משחקים</div>
       <div class="nav-item" onclick="launchGame('ttt')">
         <span class="nav-icon">✕</span> איקס עיגול
@@ -1986,6 +1991,18 @@ body {
 </div>
 
 <!-- ════════════════════════════════════════
+     MODAL: ADMIN PANEL
+════════════════════════════════════════ -->
+<div class="modal-overlay" id="adminModal">
+  <div class="modal wide">
+    <button class="modal-close" onclick="closeModal('adminModal')">✕</button>
+    <div class="modal-title">🛡️ ניהול משתמשים</div>
+    <div class="modal-sub">רק מנהלים רואים את הפאנל הזה</div>
+    <div id="adminUserList" style="display:flex;flex-direction:column;gap:8px;max-height:400px;overflow-y:auto"></div>
+  </div>
+</div>
+
+<!-- ════════════════════════════════════════
      MODAL: GAME SELECT
 ════════════════════════════════════════ -->
 <div class="modal-overlay" id="gameSelectModal">
@@ -2230,6 +2247,7 @@ async function openDashboard() {
   renderDailyCard();
   showScreen('dashboardScreen');
   initDashChat();
+  checkAdmin();
 }
 
 async function renderMiniLeaderboard() {
@@ -2421,6 +2439,53 @@ function toggleGameChat() {
   const btn   = document.getElementById('gameChatToggle');
   panel.classList.toggle('collapsed', APP.gameChatCollapsed);
   btn.textContent = APP.gameChatCollapsed ? '▶' : '◀';
+}
+
+/* ════════════════════════════════════════════════════════
+   ADMIN PANEL
+════════════════════════════════════════════════════════ */
+async function checkAdmin() {
+  const user = await getUser(APP.me);
+  const isAdmin = user && user.isAdmin === true;
+  const adminBtn = document.getElementById('adminNavItem');
+  if (adminBtn) adminBtn.style.display = isAdmin ? '' : 'none';
+}
+
+async function openAdminPanel() {
+  const users = await getAllUsers();
+  const el = document.getElementById('adminUserList');
+  const entries = Object.entries(users).filter(([n]) => n !== APP.me);
+
+  if (!entries.length) {
+    el.innerHTML = '<div style="color:var(--t4);text-align:center;padding:20px">אין משתמשים אחרים</div>';
+  } else {
+    el.innerHTML = entries.map(([name, d]) => `
+      <div style="display:flex;align-items:center;gap:12px;padding:12px 16px;background:var(--bg3);border-radius:var(--r);border:1px solid var(--border)">
+        <div style="width:36px;height:36px;border-radius:10px;background:linear-gradient(135deg,var(--indigo),var(--pink));display:flex;align-items:center;justify-content:center;font-weight:800;flex-shrink:0">${name[0].toUpperCase()}</div>
+        <div style="flex:1">
+          <div style="font-weight:700;color:var(--t1)">${name} ${d.isAdmin?'<span style="font-size:.65rem;background:rgba(245,158,11,.15);color:#fbbf24;padding:2px 7px;border-radius:99px;font-weight:700">מנהל</span>':''}</div>
+          <div style="font-size:.72rem;color:var(--t4)">${d.games||0} משחקים · ${d.wins||0} ניצחונות</div>
+        </div>
+        <button onclick="adminDeleteUser('${name}')"
+          style="background:rgba(233,69,96,.15);border:1px solid rgba(233,69,96,.3);color:var(--pink2);padding:7px 14px;border-radius:var(--r-sm);cursor:pointer;font-size:.8rem;font-weight:700;transition:all .15s"
+          onmouseover="this.style.background='rgba(233,69,96,.3)'" onmouseout="this.style.background='rgba(233,69,96,.15)'">
+          🗑 מחק
+        </button>
+      </div>
+    `).join('');
+  }
+  openModal('adminModal');
+}
+
+async function adminDeleteUser(username) {
+  if (!confirm(`למחוק את המשתמש "${username}"? פעולה זו לא הפיכה!`)) return;
+  try {
+    await USERS_REF.child(username).remove();
+    alert(`✅ המשתמש "${username}" נמחק בהצלחה`);
+    openAdminPanel(); // רענן את הרשימה
+  } catch(e) {
+    alert('שגיאה: ' + e.message);
+  }
 }
 
 /* ════════════════════════════════════════════════════════
