@@ -2320,63 +2320,76 @@ async function updateStat(username, type) {
 }
 
 /* ════════════════════════════════════════════════════════
-   GLOBAL CHAT (dashboard)
+   CHAT SYSTEM — Firebase realtime listener
 ════════════════════════════════════════════════════════ */
-/* ════════════════════════════════════════════════════════
-   CHAT — מערכת אחודה לדשבורד ולמשחק
-════════════════════════════════════════════════════════ */
-let _chatRef = null;
-let _chatCb  = null;
+let _chatUnsub = null;   // Firebase off() callback
 
-function _startChat() {
-  // עצור listener קיים
-  if (_chatRef && _chatCb) { _chatRef.off('value', _chatCb); }
-  const me = APP.me;
-  _chatRef = CHAT_REF.limitToLast(80);
-  _chatCb  = _chatRef.on('value', snap => {
-    const msgs = [];
-    snap.forEach(c => msgs.push(c.val()));
-    if (!msgs.length) return;
-    // עדכן את שני פאנלי הצ'אט (דשבורד + משחק)
-    ['dashChatMessages','gameChatMessages'].forEach(id => {
-      const el = document.getElementById(id);
-      if (el) {
-        el.innerHTML = msgs.map(m => buildBubble(m, me)).join('');
-        el.scrollTop = el.scrollHeight;
-      }
-    });
+function _renderChat(msgs, me) {
+  ['dashChatMessages','gameChatMessages'].forEach(id => {
+    const el = document.getElementById(id);
+    if (!el) return;
+    if (!msgs.length) {
+      el.innerHTML = '<div class="msg-bubble system">אין הודעות עדיין 👋</div>';
+    } else {
+      el.innerHTML = msgs.map(m => buildBubble(m, me)).join('');
+    }
+    el.scrollTop = el.scrollHeight;
   });
 }
 
-function stopChatListener()    { if (_chatRef && _chatCb) { _chatRef.off('value', _chatCb); _chatRef=null; _chatCb=null; } }
-function stopGameChatListener(){ /* מטופל ע"י stopChatListener */ }
+function buildBubble(msg, me) {
+  if (!msg || !msg.text) return '';
+  if (msg.type === 'system') return `<div class="msg-bubble system">${msg.text}</div>`;
+  const mine   = me && msg.sender === me;
+  const senderEl = mine ? '' : `<div class="msg-sender">${msg.sender || ''}</div>`;
+  return `<div class="msg-bubble ${mine ? 'me' : 'them'}">${senderEl}<div>${msg.text}</div><div class="msg-time">${msg.time || ''}</div></div>`;
+}
 
-function initDashChat()        { _startChat(); }
+function startChatListener() {
+  stopChatListener();
+  const me = APP.me;
+  const ref = CHAT_REF.limitToLast(80);
+
+  const cb = ref.on('value',
+    snap => {
+      const msgs = [];
+      snap.forEach(c => { const v = c.val(); if (v) msgs.push(v); });
+      _renderChat(msgs, me);
+    },
+    err => console.error('Chat listener error:', err)
+  );
+
+  _chatUnsub = () => ref.off('value', cb);
+}
+
+function stopChatListener() {
+  if (_chatUnsub) { try { _chatUnsub(); } catch(e){} _chatUnsub = null; }
+}
+
+function stopGameChatListener() { /* same listener */ }
+
+function initDashChat() { startChatListener(); }
+
 function initGameChat(players) {
-  _startChat();
+  startChatListener();
   const el = document.getElementById('gameChatOnline');
   if (el) el.textContent = players || '2 שחקנים';
 }
 
-async function pushChat(text, sender, type='normal') {
+async function pushChat(text, sender, type = 'normal') {
+  if (!text) return;
   try {
     await CHAT_REF.push().set({
       id: Date.now(),
       sender: sender || 'אנונימי',
-      text, type,
-      time: new Date().toLocaleTimeString('he-IL',{hour:'2-digit',minute:'2-digit'})
+      text,
+      type,
+      time: new Date().toLocaleTimeString('he-IL', { hour: '2-digit', minute: '2-digit' })
     });
-  } catch(e) {
-    console.error('Chat error:', e);
-    alert('שגיאת צ\'אט: ' + e.message);
+  } catch (e) {
+    console.error('pushChat failed:', e);
+    alert('שגיאה בשליחה: ' + e.message);
   }
-}
-
-function buildBubble(msg, me) {
-  if (msg.type==='system') return `<div class="msg-bubble system">${msg.text}</div>`;
-  const mine   = msg.sender && msg.sender === me;
-  const sender = mine ? '' : `<div class="msg-sender">${msg.sender||''}</div>`;
-  return `<div class="msg-bubble ${mine?'me':'them'}">${sender}<div>${msg.text}</div><div class="msg-time">${msg.time||''}</div></div>`;
 }
 
 async function sendDashChat() {
@@ -2395,8 +2408,8 @@ async function sendGameChat() {
   await pushChat(txt, APP.me);
 }
 
-async function sendDashEmoji(e) { await pushChat(e, APP.me, 'emoji'); }
-async function sendGameEmoji(e) { await pushChat(e, APP.me, 'emoji'); }
+async function sendDashEmoji(e)  { await pushChat(e, APP.me, 'emoji'); }
+async function sendGameEmoji(e)  { await pushChat(e, APP.me, 'emoji'); }
 
 function toggleGameChat() {
   APP.gameChatCollapsed = !APP.gameChatCollapsed;
